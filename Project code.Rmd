@@ -1,0 +1,485 @@
+---
+title: "Modeling and assessing pay disparity"
+author: "Dawnena Key, Katrin Jõgi"
+date: "2023-10-08"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library('tidyr')
+library('ggplot2')
+library("ggpubr")
+theme_set(
+  theme_bw() +
+    theme(legend.position = "top")
+  )
+library(GGally)
+# Install pwr package
+install.packages("pwr") 
+library(pwr)
+install.packages("car")
+library(car)
+```
+
+Load data
+```{r regression project data}
+# Load data 
+library('Sleuth3')
+data <- case1202[,-c(2)]
+attach(data)
+```
+
+
+#Exploratory graphs
+#Scatter plots with starting salary and education and seniority
+```{r}
+
+e <- ggplot(data, aes(x=Educ, y=Bsal, color = Sex)) + geom_point() + geom_smooth(method=lm,  linetype="dashed", se = FALSE, color="darkred", fill="blue") + labs(title = "Starting salary and education", x = "Education (years)", y = "Starting salary")  + theme(legend.position = c(0.3,0.9)) 
+s <- ggplot(data, aes(x=Senior, y=Bsal, color=Sex)) + geom_point() + geom_smooth(method=lm, linetype="dashed", se = FALSE, color="darkred", fill="blue") + labs(title = "Starting salary and seniority", x = "Seniority (months)", y = "Starting salary")  + theme(legend.position = c(0.7,0.9)) 
+f <- ggarrange(e, s, ncol = 2, nrow = 1)
+f
+```
+
+
+#Boxplot with starting salary and sex, Histogram with starting salary and sex
+```{r}
+h <- ggplot(data,  aes(x=Bsal, color=Sex, fill=Sex)  ) + geom_histogram(binwidth = 500) + labs(title = "Starting salary,Sex", x = "Starting salary") + theme(legend.position = c(0.8,0.8)) 
+
+b <- ggplot(case1202, aes(x=Sex, y=Bsal)) + geom_boxplot(outlier.colour="red", outlier.shape=8,outlier.size=4) + coord_flip() + labs(title = "Starting salary, Sex", y = "Starting salary")
+
+b1 <- ggplot(case1202, aes(x=Sex, y=Bsal)) + geom_boxplot(outlier.colour="red", outlier.shape=8,outlier.size=4) + labs(title = "Starting salary, Sex", y = "Starting salary")
+f2 <- ggarrange(h, b1, ncol = 2, nrow = 1)
+f2
+```
+
+#Density plot with starting salary and sex
+```{r}
+ggplot(case1202, aes(Bsal, fill=Sex)) + 
+  geom_density(alpha=.5) + 
+  scale_fill_manual(values = c('Yellow','#E69F00')) + 
+  theme(legend.position = c(0.9,0.6)) + labs(title = "Density for starting salary and sex", x = "Starting salary")
+```
+
+
+#Qplot with starting salary and sex
+```{r}
+qplot(sample = Bsal, data = data, shape=Sex, color = Sex) + labs(title = "Distribution of Starting salary, Sex") + theme(legend.position = c(0.3,0.8)) 
+```
+
+#Qqplots with starting salary and sex
+```{r}
+ggqqplot(data$Bsal[data$Sex == "Male"]) 
+ggqqplot(data$Bsal[data$Sex == "Female"])
+```
+
+#Shapiro test for normality
+```{r}
+shapiro.test(Bsal[Sex=="Male"]) #not normal
+shapiro.test(Bsal[Sex=="Female"]) #normal
+```
+
+#Variance - Equal
+It can be hard to tell if equal variance is satisfied from a graph so we calculate the statistic, and perhaps more importantly we determine if the difference in variance is due to random chance with a hypothesis test.
+
+```{r}
+# Extract male and female salaries
+male_salaries <- subset(data, Sex == "Male")$Bsal
+female_salaries <- subset(data, Sex == "Female")$Bsal
+
+#whether t-test or welch's test, test variances, if equal, use t.test
+# F-test 
+var.test(male_salaries, female_salaries)
+
+# F-test using formula syntax
+var.test(Bsal ~ Sex, data = data)
+
+#Levene's test 
+leveneTest(Bsal ~ as.factor(Sex), data = data) 
+```
+
+##TWO-SAMPLE TEST
+##Go with two-sample t-test, equal variance 
+
+##Equal Variance, T-test is appropriate, two-sample t-test, wilcox test
+```{r tests}
+t.test(Bsal)
+t.test(Bsal[Sex == 'Female'],Bsal[Sex == 'Male'],var.equal = TRUE)
+wilcox.test(Bsal ~ Sex, exact=FALSE, correct=TRUE, 
+            alternative="two.sided", conf.int=TRUE)  
+```
+
+##Power Analysis
+```{r}
+# Significance level
+alpha = 0.05
+
+# Desired power  
+power = 0.8
+
+# Estimate effect size 
+mean_diff <- mean(Bsal[Sex == "Male"]) - mean(Bsal[Sex == "Female"])
+pooled_sd <- sqrt(((length(Bsal[Sex == "Male"])-1)*sd(Bsal[Sex == "Male"])^2 +  
+                  (length(Bsal[Sex == "Female"])-1)*sd(Bsal[Sex == "Female"])^2) /  
+                 (length(Bsal[Sex == "Male"])+length(Bsal[Sex == "Female"])-2))
+d = mean_diff / pooled_sd
+
+# Compute required sample size
+pwr.t.test(d = d, power = power, sig.level = alpha,  
+           type = "two.sample")
+pwr.t2n.test(d = d, power = 0.8, n2 = 32)
+```
+
+## FIT MODEL TO DATA
+
+#FORWARD SELECTION
+
+# Model1A. Linear model with Bsal and Educ
+```{r}
+Educ.lm <- lm(Bsal ~ Educ, data=data)
+summary(Educ.lm)
+par(mfrow=c(2,2))
+plot(Educ.lm)
+```
+
+# Model1B. Linear model with Bsal and Senior
+```{r}
+Senior.lm <- lm(Bsal ~ Senior, data=data)
+summary(Senior.lm)
+par(mfrow=c(2,2))
+plot(Senior.lm)
+```
+
+# Model1C. Linear model with Bsal and Exper
+```{r}
+Exper.lm <- lm(Bsal ~ Exper, data=data)
+summary(Exper.lm)
+par(mfrow=c(2,2))
+plot(Exper.lm)
+```
+
+# Model1D. Linear model with Bsal and Age
+```{r}
+Age.lm <- lm(Bsal ~ Age, data=data)
+summary(Age.lm)
+par(mfrow=c(2,2))
+plot(Age.lm)
+```
+
+# Model2A. Non-linear model with Bsal and Educ
+```{r}
+Educ.poly.lm <- lm(Bsal ~ poly(Educ, 2), data=data)
+summary(Educ.poly.lm)
+par(mfrow=c(2,2))
+plot(Educ.poly.lm)
+```
+
+# Model2B. Non-linear model with Bsal and Senior
+```{r}
+Senior.poly.lm <- lm(Bsal ~ poly(Senior, 2), data=data)
+summary(Senior.poly.lm)
+par(mfrow=c(2,2))
+plot(Senior.poly.lm)
+```
+
+# Model2C. Non-linear model with Bsal and Exper
+```{r}
+Exper.poly.lm <- lm(Bsal ~ poly(Exper, 2), data=data)
+summary(Exper.poly.lm)
+par(mfrow=c(2,2))
+plot(Exper.poly.lm)
+```
+
+# Model3A. Transformed model with Bsal and Educ
+```{r}
+Educ.log.lm <- lm(log(Bsal) ~ log(Educ), data=data)
+summary(Educ.log.lm)
+par(mfrow=c(2,2))
+plot(Educ.log.lm)
+```
+
+# Model3B. Transformed model with Bsal and Senior
+```{r}
+Senior.log.lm <- lm(log(Bsal) ~ log(Senior), data=data)
+summary(Senior.log.lm)
+par(mfrow=c(2,2))
+plot(Senior.log.lm)
+```
+
+# Model3C. Transformed model with Bsal and Exper
+```{r}
+Exper.log.lm <- lm(log(Bsal) ~ Exper, data=data)
+summary(Exper.log.lm)
+par(mfrow=c(2,2))
+plot(Exper.log.lm)
+```
+
+# Model4A. Two-variable model with Bsal and Educ + Senior
+```{r}
+Educ.Senior.lm <- lm(Bsal ~ Educ + Senior, data=data)
+summary(Educ.Senior.lm)
+par(mfrow=c(2,2))
+plot(Educ.Senior.lm)
+```
+
+# Model4B. Two-variable non-linear model with Bsal and poly(Educ, 2) + Senior
+```{r}
+PEduc.Senior.lm <- lm(Bsal ~ poly(Educ, 2) + Senior, data=data)
+summary(PEduc.Senior.lm)
+par(mfrow=c(2,2))
+plot(PEduc.Senior.lm)
+```
+
+# Model4C. Two-variable model with Bsal and Educ + Exper
+```{r}
+Educ.Exper.lm <- lm(Bsal ~ Educ + Exper, data=data)
+summary(Educ.Exper.lm)
+par(mfrow=c(2,2))
+plot(Educ.Exper.lm)
+```
+
+# Model5A. Interaction model with Bsal and Educ:Senior
+```{r}
+ggplot(data, aes(x=Educ, y=Senior, color = Sex)) + geom_point() + geom_smooth(method=lm,  linetype="dashed", se = FALSE, color="darkred", fill="blue") + labs(title = "Seniority and education", x = "Education (years)", y = "Seniority")
+Inter.Educ.Senior.lm <- lm(Bsal ~ Educ + Senior + Educ:Senior, data=data)
+summary(Inter.Educ.Senior.lm)
+par(mfrow=c(2,2))
+plot(Inter.Educ.Senior.lm)
+```
+
+# Model5B. Interaction model with Bsal and Educ:Exper
+```{r}
+ggplot(data, aes(x=Educ, y=Exper, color = Sex)) + geom_point() + geom_smooth(method=lm,  linetype="dashed", se = FALSE, color="darkred", fill="blue") + labs(title = "Experience and education", x = "Education (years)", y = "Experience")
+Inter.Educ.Exper.lm <- lm(Bsal ~ Educ + Exper + Educ:Exper, data=data)
+summary(Inter.Educ.Exper.lm)
+par(mfrow=c(2,2))
+plot(Inter.Educ.Exper.lm)
+```
+
+# Model5C. Interaction model with Bsal and Senior:Exper
+```{r}
+ggplot(data, aes(x=Senior, y=Exper, color = Sex)) + geom_point() + geom_smooth(method=lm,  linetype="dashed", se = FALSE, color="darkred", fill="blue") + labs(title = "Experience and Seniority", x = "Seniority", y = "Experience")
+Inter.Senior.Exper.lm <- lm(Bsal ~ Senior + Exper + Senior:Exper, data=data)
+summary(Inter.Senior.Exper.lm)
+par(mfrow=c(2,2))
+plot(Inter.Senior.Exper.lm)
+```
+# Model6A. Three-variable model with Bsal and Educ + Senior + Exper
+```{r}
+Educ.Senior.Exper.lm <- lm(Bsal ~ Educ + Senior + Exper, data=data)
+summary(Educ.Senior.Exper.lm)
+par(mfrow=c(2,2))
+plot(Educ.Senior.Exper.lm)
+```
+
+# Model6B. Three-variable model with Bsal and poly(Educ, 2) + Senior + Exper
+```{r}
+PEduc.Senior.Exper.lm <- lm(Bsal ~ poly(Educ,2) + Senior + Exper, data=data)
+summary(PEduc.Senior.Exper.lm)
+par(mfrow=c(2,2))
+plot(PEduc.Senior.Exper.lm)
+```
+
+# Model6C. Three-variable model with Bsal and Educ + Senior + Age
+```{r}
+Educ.Senior.Age.lm <- lm(Bsal ~ Educ + Senior + Age, data=data)
+summary(Educ.Senior.Age.lm)
+par(mfrow=c(2,2))
+plot(Educ.Senior.Age.lm)
+```
+# Model7. Four-variable model with Bsal and Educ + Senior + Exper + Age
+```{r}
+Educ.Senior.Exper.Age.lm <- lm(Bsal ~ Educ + Senior + Exper + Age, data=data)
+summary(Educ.Senior.Exper.Age.lm)
+par(mfrow=c(2,2))
+plot(Educ.Senior.Exper.Age.lm)
+```
+
+# Model8. Full model with Bsal and Educ + Senior + Exper + Age + Sex
+```{r}
+Full.lm <- lm(Bsal ~ Educ + Senior + Exper + Age + Sex, data=data)
+summary(Full.lm)
+par(mfrow=c(2,2))
+plot(Full.lm)
+```
+
+#Model 9. Remove Exper from Model 8: model with Bsal and Educ + Senior + Age + Sex
+```{r}
+Educ.Senior.Age.Sex.lm <- update(Full.lm, .~.  - Exper)
+summary(Educ.Senior.Age.Sex.lm)
+par(mfrow=c(2,2))
+plot(Educ.Senior.Age.Sex.lm)
+```
+
+#Model 10. Remove Age from Model 9: model with Bsal and Educ + Senior + Sex
+```{r}
+Educ.Senior.Sex.lm <- update(Educ.Senior.Age.Sex.lm, .~.  - Age)
+summary(Educ.Senior.Sex.lm)
+par(mfrow=c(1,4))
+plot(Educ.Senior.Sex.lm)
+plot(Educ.Senior.Sex.lm, 4)
+coef(Educ.Senior.Sex.lm)
+```
+
+#Model 11. Remove Educ from Model 10: model with Bsal and Senior + Sex
+```{r}
+Senior.Sex.lm <- update(Educ.Senior.Sex.lm, .~.  - Educ)
+summary(Senior.Sex.lm)
+par(mfrow=c(2,2))
+plot(Senior.Sex.lm)
+```
+
+#Model 12. Remove Senior from Model 11: model with Bsal and Sex
+```{r}
+Sex.lm <- update(Senior.Sex.lm, .~.  - Senior)
+summary(Sex.lm)
+par(mfrow=c(2,2))
+plot(Sex.lm)
+```
+
+#AIC values
+```{r}
+AIC(Educ.lm, Senior.lm, Exper.lm, Age.lm, Educ.poly.lm, Senior.poly.lm, Exper.poly.lm, Educ.log.lm, Senior.log.lm, Exper.log.lm, Educ.Senior.lm, PEduc.Senior.lm, Educ.Exper.lm, Inter.Educ.Senior.lm, Inter.Educ.Exper.lm, Inter.Senior.Exper.lm, Educ.Senior.Exper.lm, Educ.Senior.Age.lm, Educ.Senior.Exper.Age.lm, Full.lm, Educ.Senior.Age.Sex.lm, Educ.Senior.Sex.lm, Senior.Sex.lm, Sex.lm)
+```
+
+# Model9. Exploration of interactions
+```{r}
+Full.Inter.lm <- lm(Bsal ~ Educ*Senior*Exper*Sex + I(Educ^2) + I(Senior^2) + I(Exper^2), data=data)
+summary(Full.Inter.lm)
+Full.Inter.lm.2 <- update(Full.Inter.lm, .~.  - Educ:Senior:Exper:Sex)
+summary(Full.Inter.lm.2)
+Full.Inter.lm.3 <- update(Full.Inter.lm.2, .~.  - Senior:Exper:Sex)
+Full.Inter.lm.4 <- update(Full.Inter.lm.3, .~. -Educ:Exper:Sex)
+Full.Inter.lm.5 <- update(Full.Inter.lm.4, .~. -Educ:Senior:Sex)
+Full.Inter.lm.6 <- update(Full.Inter.lm.5, .~. -Educ:Senior:Exper)
+Full.Inter.lm.7 <- update(Full.Inter.lm.6, .~. -Exper:Sex)
+Full.Inter.lm.8 <- update(Full.Inter.lm.7, .~. -Senior:Sex)
+Full.Inter.lm.9 <- update(Full.Inter.lm.8, .~. -Senior:Exper)
+Full.Inter.lm.10 <- update(Full.Inter.lm.9, .~. -Educ:Sex)
+Full.Inter.lm.11 <- update(Full.Inter.lm.10, .~. -Educ:Senior)
+Full.Inter.lm.12 <- update(Full.Inter.lm.11, .~. -Educ:Exper)
+Full.Inter.lm.13 <- update(Full.Inter.lm.12, .~. -I(Senior^2))
+Full.Inter.lm.14 <- update(Full.Inter.lm.13, .~. -I(Educ^2))
+Full.Inter.lm.15 <- update(Full.Inter.lm.14, .~. -I(Exper^2))
+Full.Inter.lm.16 <- update(Full.Inter.lm.15, .~. -Exper)
+summary(Full.Inter.lm.16)
+
+AIC(Full.Inter.lm.16, Full.Inter.lm.12)
+```
+
+#Plot relationships with Bsal and Educ
+```{r}
+#Linear
+par(mfrow=c(1,3))
+plot(data$Educ, data$Bsal, main="Linear Model")
+abline(Educ.lm, col="blue")
+
+#non-linear
+plot(data$Educ, data$Bsal,  main="Non-linear Model")
+lines(data$Educ, predict(Educ.poly.lm), col="green") 
+
+#transformed
+plot(data$Educ, data$log_Bsal,  main="Transformed Model")
+abline(Educ.log.lm, col="red")
+```
+
+#Plot relationships with Bsal and Senior
+```{r}
+#Linear
+par(mfrow=c(1,3))
+plot(data$Senior, data$Bsal, main="Linear Model")
+abline(Senior.lm, col="blue")
+
+#non-linear
+plot(data$Senior, data$Bsal,  main="Non-linear Model")
+lines(data$Senior, predict(Senior.poly.lm), col="green") 
+
+#transformed
+plot(data$Senior, data$log_Bsal,  main="Transformed Model")
+abline(Senior.log.lm, col="red")
+```
+
+#Plot relationships with Bsal and Exper
+```{r}
+#Linear
+par(mfrow=c(1,3))
+plot(data$Exper, data$Bsal, main="Linear Model")
+abline(Exper.lm, col="blue")
+
+#non-linear
+plot(data$Exper, data$Bsal,  main="Non-linear Model")
+lines(data$Exper, predict(Exper.poly.lm), col="green") 
+
+#transformed
+plot(data$Exper, data$log_Bsal,  main="Transformed Model")
+abline(Exper.log.lm, col="red")
+```
+
+
+#BACKWARD ELIMINATION
+
+#Step 1. all variables
+```{r}
+data.lm.full <- lm(Bsal ~ Educ + Senior + Sex + Age + Exper, data = data)
+summary(data.lm.full)
+```
+
+#Step 2. Exper removed
+```{r}
+data.lm.less.Exper <- update(data.lm.full, .~. - Exper, data = data)
+summary(data.lm.less.Exper)
+```
+
+#Step 3. Age removed - last step, all p-values < 0.01
+```{r}
+Sex.Senior.Educ.lm <- update(data.lm.less.Exper, .~. - Age, data = data)
+summary(Sex.Senior.Educ.lm)
+#residual analysis
+par(mfrow = c(2,2))
+plot(Sex.Senior.Educ.lm)
+plot(Sex.Senior.Educ.lm, 4) #no influential points
+```
+
+
+# SUBSETS
+
+```{r}
+install.packages(("caret"))
+library(caret)
+# Set seed for reproducibility
+set.seed(123)
+# Set up repeated k-fold cross-validation
+train.control <- trainControl(method = "cv", number = 10)
+# Train the model
+step.model <- train(Bsal ~., data = data,
+                    method = "leapBackward", 
+                    tuneGrid = data.frame(nvmax = 1:5),
+                    trControl = train.control
+                    )
+summary(step.model)
+# Model accuracy
+step.model$results
+#how many variables to use
+plot(step.model$results[,"nvmax"], step.model$results[,"Rsquared"], type = "l")
+plot(step.model$results[,"nvmax"], step.model$results[,"MAE"], type = "l")
+plot(step.model$results[,"nvmax"], step.model$results[,"Rsquared"], type = "p")
+```
+
+#Best tuning values
+```{r}
+# best tuning values
+step.model$bestTune
+```
+
+```{r}
+# Summary of the model
+summary(step.model$finalModel)
+```
+
+```{r}
+coef(step.model$finalModel, 3)
+```
+
+```{r}
+anova(Educ.Senior.lm, Sex.Senior.Educ.lm)
+```
